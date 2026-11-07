@@ -367,6 +367,41 @@ gcc hello.c -o output/hello.exe
 | `warning: LF will be replaced by CRLF` | Windows 换行符提示 | 警告而已，可忽略 |
 | `exceeds GitHub's file size limit of 100.00 MB` | 单文件超 100 MB | 用 Git LFS，或排除该文件 |
 | 中文文件名显示成八进制 | Git 默认转义非 ASCII | `git config --global core.quotepath false` |
+| `Failed to connect to github.com port 443` | 网络不通，不是配置错 | 见 7.1 |
+
+### 7.1 推送报 `Failed to connect to github.com port 443`
+
+**这是网络问题，不是 Git 配置问题。** 典型现象：`gh repo create` 明明成功了、仓库也出现在 GitHub 上，但点进去是空的 —— 因为 `gh` 走的是 `api.github.com`，而 `git push` 走的是 `github.com:443`，两条链路可以一通一不通。
+
+先分清哪条路断了：
+
+```powershell
+Test-NetConnection -ComputerName github.com -Port 443 -InformationLevel Quiet      # git push 用这条
+Test-NetConnection -ComputerName api.github.com -Port 443 -InformationLevel Quiet  # gh 用这条
+```
+
+`github.com` 返回 `False`、`api.github.com` 返回 `True`，就是本节这种情况。
+
+本机若装了代理（Clash 类通常监听 7890 或 7897），先验证代理本身能不能访问 GitHub：
+
+```powershell
+curl.exe -s -o NUL -w "HTTP %{http_code}`n" --max-time 20 -x http://127.0.0.1:7897 https://github.com/
+```
+
+返回 `HTTP 200` 说明代理可用。再把它只绑定给 github.com（不影响 gitee 等其他远端）：
+
+```powershell
+git config --global http.https://github.com.proxy http://127.0.0.1:7897
+git push -u origin main
+```
+
+看到 `* [new branch] main -> main` 即成功。事后想撤掉这条配置：
+
+```powershell
+git config --global --unset http.https://github.com.proxy
+```
+
+**排查顺序记住一句话：`gh` 成功不等于能推送。** 仓库建出来是空的，先怀疑 `github.com:443` 的网络，再查分支名和提交是否存在。
 
 ---
 
